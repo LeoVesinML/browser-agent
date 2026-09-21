@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Вкусно и Быстро — доставка</title>
+<style>
+ *{box-sizing:border-box}
+ body{font:15px/1.5 -apple-system,system-ui,sans-serif;margin:0;background:#fbfbfc;color:#16181d}
+ header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e6e8ee;padding:12px 20px;display:flex;gap:16px;align-items:center;z-index:10}
+ .brand{font-weight:800;font-size:18px;color:#e8562a}
+ header input{flex:1;max-width:460px;padding:9px 13px;border:1px solid #d9dde5;border-radius:10px}
+ .cartbtn{position:relative;padding:8px 16px;border-radius:10px;border:1px solid #e8562a;background:#e8562a;color:#fff;cursor:pointer;font:inherit}
+ .wrap{max-width:1080px;margin:0 auto;padding:22px 20px 80px}
+ h1{font-size:24px;margin:6px 0 18px}
+ h2{font-size:19px;margin:26px 0 12px}
+ .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+ .tile{background:#fff;border:1px solid #e9ebf1;border-radius:14px;padding:16px;cursor:pointer}
+ .tile:hover{border-color:#c6ccda}
+ .tile .t{font-weight:600}
+ .tile .d{color:#7a8195;font-size:13px;margin-top:4px}
+ .tile .p{margin-top:10px;font-weight:700}
+ .item{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid #e9ebf1;border-radius:14px;padding:14px;margin-bottom:10px}
+ .item .info{flex:1}
+ .item .name{font-weight:600}
+ .item .desc{color:#7a8195;font-size:13px}
+ .item .price{font-weight:700;width:90px;text-align:right}
+ button{font:inherit;padding:8px 14px;border:1px solid #d3d8e2;background:#fff;border-radius:10px;cursor:pointer}
+ button.add{background:#fff3ee;border-color:#f0b49c;color:#c44214}
+ button.primary{background:#e8562a;border-color:#e8562a;color:#fff}
+ .panel{position:fixed;top:0;right:0;width:380px;height:100%;background:#fff;border-left:1px solid #e6e8ee;padding:20px;transform:translateX(100%);transition:.25s;overflow:auto;z-index:20}
+ .panel.open{transform:none}
+ .panel h3{margin:0 0 14px}
+ .line{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef0f5}
+ .total{display:flex;justify-content:space-between;font-weight:700;padding:14px 0}
+ label{display:block;font-size:13px;color:#5d6577;margin:12px 0 4px}
+ input[type=text],input[type=tel],select,textarea{width:100%;padding:9px 12px;border:1px solid #d9dde5;border-radius:10px;font:inherit}
+ .muted{color:#7a8195;font-size:13px}
+ .done{padding:40px;text-align:center}
+ nav.bc{font-size:13px;color:#8b92a5;margin-bottom:6px}
+ nav.bc a{color:#5b6c9a}
+</style></head>
+<body>
+<header>
+  <span class="brand">Вкусно и Быстро</span>
+  <input id="q" type="search" placeholder="Блюдо или ресторан" aria-label="Поиск">
+  <button class="cartbtn" id="opencart">Корзина · <span id="cnt">0</span></button>
+</header>
+<div class="wrap" id="app"></div>
+<div class="panel" id="panel"></div>
+<script>
+const PLACES = [
+  {id:'grill', name:'Мятный Гриль', tag:'Бургеры, гриль', eta:'25–35 мин', items:[
+    {id:'g1', name:'BBQ Бургер', desc:'Говяжья котлета, соус барбекю, бекон, чеддер', price:590},
+    {id:'g2', name:'BBQ Бургер с курицей', desc:'Куриное филе в панировке, соус барбекю', price:520},
+    {id:'g3', name:'Двойной BBQ Бургер', desc:'Две котлеты, двойной чеддер, соус барбекю', price:790},
+    {id:'g4', name:'Чизбургер классический', desc:'Говядина, чеддер, огурцы, горчичный соус', price:450},
+    {id:'g5', name:'Картофель фри', desc:'Классический, с солью', price:190},
+    {id:'g6', name:'Картофель по-деревенски', desc:'Дольки со специями', price:220},
+    {id:'g7', name:'Луковые кольца', desc:'8 шт., соус ранч', price:260},
+    {id:'g8', name:'Лимонад домашний', desc:'Мята-лайм, 400 мл', price:210},
+  ]},
+  {id:'pasta', name:'Паста Ностра', tag:'Итальянская кухня', eta:'35–45 мин', items:[
+    {id:'p1', name:'Карбонара', desc:'Гуанчале, пекорино, яйцо', price:640},
+    {id:'p2', name:'Качо э пепе', desc:'Пекорино романо, чёрный перец', price:570},
+    {id:'p3', name:'Тирамису', desc:'Классический, 140 г', price:340},
+  ]},
+  {id:'sushi', name:'Тунец и Рис', tag:'Суши, роллы', eta:'40–50 мин', items:[
+    {id:'s1', name:'Филадельфия', desc:'Лосось, сливочный сыр, 8 шт.', price:690},
+    {id:'s2', name:'Калифорния', desc:'Краб, авокадо, икра тобико, 8 шт.', price:560},
+    {id:'s3', name:'Мисо-суп', desc:'Тофу, вакамэ, 300 мл', price:190},
+  ]},
+];
+// Previous orders — the agent must discover this on its own, it is not linked from the main page.
+const HISTORY = [{place:'grill', when:'на прошлой неделе', items:['BBQ Бургер','Картофель фри','Лимонад домашний']}];
+
+let cart = [];
+let view = {name:'home'};
+const $ = (s)=>document.querySelector(s);
+const money = (n)=>n.toLocaleString('ru-RU')+' ₽';
+const place = (id)=>PLACES.find(p=>p.id===id);
+const item = (id)=>PLACES.flatMap(p=>p.items).find(i=>i.id===id);
+
+function setCount(){ $('#cnt').textContent = cart.reduce((a,c)=>a+c.qty,0); }
+
+function home(){
+  return `<nav class="bc"><a href="#/">Главная</a></nav>
+   <h1>Рестораны рядом</h1>
+   <div class="grid">${PLACES.map(p=>`
+     <div class="tile" data-place="${p.id}"><div class="t">${p.name}</div>
+       <div class="d">${p.tag} · ${p.eta}</div><div class="p">Бесплатная доставка</div></div>`).join('')}</div>
+   <h2>Ваш аккаунт</h2>
+   <div class="grid"><div class="tile" data-nav="orders"><div class="t">История заказов</div>
+     <div class="d">Что вы заказывали раньше</div></div></div>`;
+}
+
+function orders(){
+  return `<nav class="bc"><a href="#/">Главная</a> / История заказов</nav><h1>История заказов</h1>` +
+   HISTORY.map(h=>`<div class="item"><div class="info"><div class="name">${place(h.place).name}</div>
+     <div class="desc">Заказ ${h.when}: ${h.items.join(', ')}</div></div>
+     <button data-place="${h.place}">Открыть меню</button></div>`).join('');
+}
+
+function menu(id){
+  const p = place(id);
+  return `<nav class="bc"><a href="#/">Главная</a> / ${p.name}</nav>
+   <h1>${p.name}</h1><div class="muted">${p.tag} · доставка ${p.eta}</div><h2>Меню</h2>` +
+   p.items.map(i=>`<div class="item"><div class="info"><div class="name">${i.name}</div>
+     <div class="desc">${i.desc}</div></div><div class="price">${money(i.price)}</div>
+     <button class="add" data-add="${i.id}">В корзину</button></div>`).join('');
+}
+
+function search(q){
+  const hits = PLACES.flatMap(p=>p.items.map(i=>({...i, place:p})))
+    .filter(i=>(i.name+' '+i.desc+' '+i.place.name).toLowerCase().includes(q.toLowerCase()));
+  return `<h1>Поиск: «${q}»</h1>` + (hits.length? hits.map(i=>`
+    <div class="item"><div class="info"><div class="name">${i.name}</div>
+      <div class="desc">${i.place.name} · ${i.desc}</div></div>
+      <div class="price">${money(i.price)}</div>
+      <button class="add" data-add="${i.id}">В корзину</button></div>`).join('') : '<p class="muted">Ничего не найдено</p>');
+}
+
+function render(){
+  const app = $('#app');
+  if(view.name==='home') app.innerHTML = home();
+  else if(view.name==='orders') app.innerHTML = orders();
+  else if(view.name==='menu') app.innerHTML = menu(view.id);
+  else if(view.name==='search') app.innerHTML = search(view.q);
+  setCount();
+}
+
+function cartPanel(){
+  if(!cart.length) return `<h3>Корзина</h3><p class="muted">Пока пусто</p><button data-close="1">Закрыть</button>`;
+  const total = cart.reduce((a,c)=>a+c.qty*item(c.id).price,0);
+  return `<h3>Корзина</h3>` + cart.map(c=>{
+    const i = item(c.id);
+    return `<div class="line"><span>${i.name} × ${c.qty}</span><span>${money(i.price*c.qty)}
+      <button data-del="${c.id}" title="Убрать">×</button></span></div>`;
+  }).join('') + `<div class="total"><span>Итого</span><span>${money(total)}</span></div>
+   <button class="primary" data-checkout="1">Перейти к оформлению</button>
+   <button data-close="1">Продолжить покупки</button>`;
+}
+
+function checkoutPanel(){
+  const total = cart.reduce((a,c)=>a+c.qty*item(c.id).price,0);
+  return `<h3>Оформление заказа</h3>
+   <label for="addr">Адрес доставки</label><input id="addr" type="text" value="ул. Ленина, 12, кв. 44">
+   <label for="phone">Телефон</label><input id="phone" type="tel" value="+7 900 000-00-00">
+   <label for="pay">Способ оплаты</label>
+   <select id="pay"><option>Картой онлайн ···· 4417</option><option>Наличными курьеру</option><option>СБП</option></select>
+   <label for="note">Комментарий курьеру</label><textarea id="note" rows="2"></textarea>
+   <div class="total"><span>К оплате</span><span>${money(total)}</span></div>
+   <button class="primary" data-pay="1">Оплатить заказ</button>
+   <button data-back="1">Назад в корзину</button>`;
+}
+
+function openPanel(html){ $('#panel').innerHTML = html; $('#panel').classList.add('open'); }
+function closePanel(){ $('#panel').classList.remove('open'); }
+
+document.addEventListener('click', (e)=>{
+  const t = e.target;
+  const p = t.closest('[data-place]');
+  if(p){ view={name:'menu', id:p.dataset.place}; location.hash = '#/r/'+p.dataset.place; render(); return; }
+  const nav = t.closest('[data-nav]');
+  if(nav){ view={name:nav.dataset.nav}; location.hash='#/'+nav.dataset.nav; render(); return; }
+  if(t.dataset.add){
+    const line = cart.find(c=>c.id===t.dataset.add);
+    line ? line.qty++ : cart.push({id:t.dataset.add, qty:1});
+    setCount(); t.textContent='Добавлено ✓';
+    setTimeout(()=>{t.textContent='В корзину';}, 1200);
+    return;
+  }
+  if(t.id==='opencart'){ openPanel(cartPanel()); return; }
+  if(t.dataset.close){ closePanel(); return; }
+  if(t.dataset.del){ cart = cart.filter(c=>c.id!==t.dataset.del); openPanel(cartPanel()); setCount(); return; }
+  if(t.dataset.checkout){ openPanel(checkoutPanel()); return; }
+  if(t.dataset.back){ openPanel(cartPanel()); return; }
+  if(t.dataset.pay){
+    openPanel(`<div class="done"><h3>Заказ оформлен 🎉</h3><p class="muted">Курьер приедет через 30 минут.</p>
+      <button data-close="1">Закрыть</button></div>`);
+    cart = []; setCount(); return;
+  }
+});
+$('#q').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter'){ view={name:'search', q:e.target.value}; render(); }
+});
+window.addEventListener('hashchange', ()=>{ if(location.hash==='#/'||!location.hash){ view={name:'home'}; render(); }});
+setTimeout(render, 300);
+</script>
+</body></html>

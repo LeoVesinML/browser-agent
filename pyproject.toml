@@ -1,0 +1,30 @@
+[project]
+name = "browser-agent"
+version = "0.1.0"
+description = "Autonomous AI agent that drives a real browser to complete open-ended, multi-step tasks."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40",
+    "playwright>=1.47",
+    "rich>=13.7",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.2"]
+dev = ["pytest>=8.0", "pytest-timeout>=2.3"]
+
+[project.scripts]
+browser-agent = "browser_agent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/browser_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

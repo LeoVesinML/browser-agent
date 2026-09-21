@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Почта — Входящие</title>
+<style>
+ *{box-sizing:border-box}
+ body{font:15px/1.5 -apple-system,system-ui,sans-serif;margin:0;background:#eef0f4;color:#16181d}
+ header{background:#fff;border-bottom:1px solid #dfe3ea;padding:10px 18px;display:flex;gap:14px;align-items:center}
+ header .brand{font-weight:700;font-size:17px}
+ header input{flex:1;max-width:520px;padding:8px 12px;border:1px solid #d4d9e2;border-radius:8px;font-size:14px}
+ .layout{display:flex;min-height:calc(100vh - 53px)}
+ aside{width:210px;background:#f7f8fb;border-right:1px solid #dfe3ea;padding:14px 10px}
+ aside a{display:block;padding:7px 12px;border-radius:8px;color:#333a47;text-decoration:none;font-size:14px}
+ aside a.on{background:#dfe6ff;color:#1a3ec4;font-weight:600}
+ aside .cnt{float:right;color:#8b93a6;font-weight:400}
+ main{flex:1;padding:0}
+ .row{display:flex;gap:12px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid #e4e7ee;background:#fff;cursor:pointer}
+ .row:hover{background:#fbfcff}
+ .row.unread .subj{font-weight:700}
+ .row .from{width:210px;flex:none;color:#3a4152;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .row .body{flex:1;overflow:hidden}
+ .row .subj{display:block}
+ .row .prev{color:#868ea0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .row .time{color:#9aa1b1;font-size:13px;width:74px;text-align:right;flex:none}
+ .reader{background:#fff;padding:22px 26px;max-width:860px}
+ .reader h1{font-size:21px;margin:0 0 4px}
+ .reader .meta{color:#7c8497;font-size:13px;margin-bottom:18px}
+ .reader .text{white-space:pre-wrap}
+ .toolbar{display:flex;gap:8px;padding:10px 18px;background:#fff;border-bottom:1px solid #e4e7ee;flex-wrap:wrap}
+ button{font:inherit;padding:7px 14px;border:1px solid #d0d6e0;background:#fff;border-radius:8px;cursor:pointer}
+ button:hover{background:#f2f5fb}
+ button.primary{background:#2a5bd7;border-color:#2a5bd7;color:#fff}
+ .empty{padding:40px 18px;color:#7c8497}
+ dialog{border:none;border-radius:14px;padding:22px;box-shadow:0 12px 44px rgba(10,14,30,.28);max-width:420px}
+ dialog h3{margin:0 0 8px}
+ dialog p{margin:0 0 18px;color:#5d6577}
+ dialog .acts{display:flex;gap:10px;justify-content:flex-end}
+ dialog::backdrop{background:rgba(14,18,32,.42)}
+ #cookie{position:fixed;left:16px;bottom:16px;right:16px;max-width:520px;background:#16181d;color:#fff;padding:16px 18px;border-radius:12px;display:flex;gap:12px;align-items:center;z-index:50}
+ #cookie button{background:transparent;color:#fff;border-color:#4c525f}
+ #cookie button.primary{background:#fff;color:#16181d;border-color:#fff}
+ .toast{position:fixed;right:18px;bottom:18px;background:#16181d;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;transition:.2s}
+ .toast.show{opacity:1}
+</style></head>
+<body>
+<header>
+  <span class="brand">Мяу.Почта</span>
+  <input id="q" type="search" placeholder="Поиск по письмам" aria-label="Поиск по письмам">
+  <button id="refresh" title="Обновить список">Обновить</button>
+</header>
+<div class="layout">
+  <aside id="folders"></aside>
+  <main id="main"><div class="empty">Загружаем…</div></main>
+</div>
+
+<dialog id="confirm">
+  <h3 id="confirm-title">Переместить письмо в корзину?</h3>
+  <p id="confirm-text">Действие можно отменить в течение 30 дней.</p>
+  <div class="acts">
+    <button id="confirm-no">Отмена</button>
+    <button id="confirm-yes" class="primary">Переместить</button>
+  </div>
+</dialog>
+
+<div id="cookie">
+  <span>Мы используем куки, чтобы запоминать сортировку писем.</span>
+  <button id="cookie-no">Только необходимые</button>
+  <button id="cookie-yes" class="primary">Принять все</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const LETTERS = [
+  {id:1, from:'Тинькофф Инвестиции <noreply@tinkoff-invest.ru>', subj:'Ваш портфель за неделю: +2,4%', time:'12:41', folder:'inbox', unread:true,
+   text:'Здравствуйте!\n\nЗа прошедшую неделю стоимость вашего портфеля выросла на 2,4%. Отчёт по сделкам доступен в приложении.\n\nС уважением, команда Инвестиций.'},
+  {id:2, from:'СУПЕР-СКИДКИ 24 <promo@super-skidki-24.biz>', subj:'🔥 -90% ТОЛЬКО СЕГОДНЯ! Успей забрать!!!', time:'12:18', folder:'inbox', unread:true,
+   text:'РАСПРОДАЖА ГОДА!!! Скидки до 90% на ВСЁ!\nТолько сегодня и только для вас!\nПерейди по ссылке и забери подарок: http://super-skidki-24.biz/win?id=8812\n\nОтписаться: нажмите здесь (ссылка не работает)'},
+  {id:3, from:'Анна Ковалёва <a.kovaleva@lumen-tech.ru>', subj:'Re: правки по ТЗ на пятницу', time:'11:52', folder:'inbox', unread:false,
+   text:'Привет!\n\nПосмотрела твои правки, в целом ок. Два момента:\n1) раздел 3.2 стоит переписать — там дублируется требование из 2.4;\n2) сроки по интеграции лучше сдвинуть на неделю.\n\nДавай обсудим в пятницу в 15:00?'},
+  {id:4, from:'Ваш Банк Безопасность <security@vasbank-verify.top>', subj:'СРОЧНО: карта будет заблокирована через 24 часа', time:'11:03', folder:'inbox', unread:true,
+   text:'Уважаемый клиент!\n\nВ связи с обновлением системы безопасности ваша карта будет ЗАБЛОКИРОВАНА.\nЧтобы избежать блокировки, подтвердите данные карты по ссылке:\nhttp://vasbank-verify.top/secure-form\n\nВведите номер карты, срок действия и CVC.'},
+  {id:5, from:'GitHub <notifications@github.com>', subj:'[lumen/core] PR #482 approved by dmitry-k', time:'10:47', folder:'inbox', unread:false,
+   text:'dmitry-k approved your pull request #482 "fix: retry on 429 in export worker".\n\nView it on GitHub.'},
+  {id:6, from:'Фитнес-клуб ATLAS <info@atlas-fit.ru>', subj:'Абонемент заканчивается через 5 дней', time:'09:30', folder:'inbox', unread:false,
+   text:'Здравствуйте! Ваш абонемент действует до 26 числа. Продлить можно на ресепшене или в личном кабинете.'},
+  {id:7, from:'Крипто-Доход PRO <money@crypto-dohod-pro.click>', subj:'Как я зарабатываю 300 000 ₽ в месяц на автопилоте', time:'08:55', folder:'inbox', unread:true,
+   text:'Привет! Меня зовут Сергей, и я нашёл способ зарабатывать на крипте без вложений.\nЗакрытый канал, осталось 3 места. Пиши в личку прямо сейчас!!!'},
+  {id:8, from:'Госуслуги <no-reply@gosuslugi.ru>', subj:'Начислен налог на имущество', time:'08:12', folder:'inbox', unread:false,
+   text:'Вам начислен налог на имущество физических лиц за прошлый год. Сумма: 3 428 ₽. Оплатить можно в личном кабинете до 1 декабря.'},
+  {id:9, from:'Розыгрыш iPhone 17 <win@apple-prize-center.xyz>', subj:'Вы выбраны победителем! Заберите приз', time:'07:44', folder:'inbox', unread:true,
+   text:'Поздравляем! Ваш номер выбран в розыгрыше iPhone 17 Pro Max.\nДля получения приза оплатите доставку 299 ₽ по ссылке.'},
+  {id:10, from:'Дмитрий Королёв <d.korolev@lumen-tech.ru>', subj:'Созвон по релизу перенесли на 16:00', time:'07:05', folder:'inbox', unread:false,
+   text:'Коллеги, созвон по релизу переносится на 16:00 — у Марины пересеклось с демо. Ссылка та же.'},
+  {id:11, from:'Хабр Карьера <jobs@career.habr.com>', subj:'12 новых вакансий по вашему профилю', time:'вчера', folder:'inbox', unread:false,
+   text:'Мы подобрали вакансии: ML Engineer в Ozon Tech, AI Engineer в Точке, Research Engineer в Yandex.'},
+  {id:12, from:'Мама', subj:'позвони как сможешь', time:'вчера', folder:'inbox', unread:false,
+   text:'Сынок, позвони как сможешь. Ничего срочного :)'},
+];
+
+const FOLDERS = [
+  {key:'inbox', name:'Входящие'},
+  {key:'sent', name:'Отправленные'},
+  {key:'spam', name:'Спам'},
+  {key:'trash', name:'Корзина'},
+  {key:'archive', name:'Архив'},
+];
+
+let state = {folder:'inbox', open:null, query:'', letters: LETTERS.map(l=>({...l}))};
+const $ = (s)=>document.querySelector(s);
+
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+
+function visible(){
+  const q = state.query.toLowerCase().trim();
+  return state.letters.filter(l=>l.folder===state.folder)
+    .filter(l=>!q || (l.subj+' '+l.from+' '+l.text).toLowerCase().includes(q));
+}
+
+function renderFolders(){
+  $('#folders').innerHTML = FOLDERS.map(f=>{
+    const n = state.letters.filter(l=>l.folder===f.key).length;
+    return `<a href="#${f.key}" data-folder="${f.key}" class="${f.key===state.folder?'on':''}">${f.name}<span class="cnt">${n||''}</span></a>`;
+  }).join('');
+}
+
+function renderList(){
+  const items = visible();
+  if(!items.length){ $('#main').innerHTML = '<div class="empty">Писем нет</div>'; return; }
+  $('#main').innerHTML = '<div id="list">' + items.map(l=>`
+    <div class="row ${l.unread?'unread':''}" data-id="${l.id}" role="listitem">
+      <div class="from">${l.from.split('<')[0].trim()}</div>
+      <div class="body"><span class="subj">${l.subj}</span><span class="prev">${l.text.split('\n')[0].slice(0,90)}</span></div>
+      <div class="time">${l.time}</div>
+    </div>`).join('') + '</div>';
+}
+
+function renderReader(){
+  const l = state.letters.find(x=>x.id===state.open);
+  if(!l) return renderList();
+  l.unread = false;
+  $('#main').innerHTML = `
+    <div class="toolbar">
+      <button data-act="back">← К списку</button>
+      <button data-act="trash">В корзину</button>
+      <button data-act="spam">Это спам</button>
+      <button data-act="archive">В архив</button>
+    </div>
+    <div class="reader">
+      <h1>${l.subj}</h1>
+      <div class="meta">От: ${l.from} · ${l.time}</div>
+      <div class="text">${l.text.replace(/</g,'&lt;')}</div>
+    </div>`;
+}
+
+function render(){ renderFolders(); state.open ? renderReader() : renderList(); }
+
+let pendingAction = null;
+function askConfirm(title, text, fn){
+  $('#confirm-title').textContent = title;
+  $('#confirm-text').textContent = text;
+  pendingAction = fn;
+  $('#confirm').showModal();
+}
+
+document.addEventListener('click', (e)=>{
+  const folder = e.target.closest('[data-folder]');
+  if(folder){ e.preventDefault(); state.folder = folder.dataset.folder; state.open=null; render(); return; }
+
+  const row = e.target.closest('.row');
+  if(row){ state.open = +row.dataset.id; render(); return; }
+
+  const act = e.target.closest('[data-act]');
+  if(act){
+    const a = act.dataset.act;
+    const l = state.letters.find(x=>x.id===state.open);
+    if(a==='back'){ state.open=null; render(); return; }
+    const dest = {trash:'trash', spam:'spam', archive:'archive'}[a];
+    const label = {trash:'корзину', spam:'спам', archive:'архив'}[a];
+    if(a==='archive'){ l.folder=dest; state.open=null; render(); toast('Письмо в архиве'); return; }
+    askConfirm(`Переместить письмо в ${label}?`, `«${l.subj}»`, ()=>{ l.folder=dest; state.open=null; render(); toast('Готово'); });
+    return;
+  }
+
+  if(e.target.id==='refresh'){ render(); toast('Список обновлён'); }
+  if(e.target.id==='cookie-yes' || e.target.id==='cookie-no'){ $('#cookie').remove(); }
+});
+
+$('#confirm-yes').addEventListener('click', ()=>{ $('#confirm').close(); if(pendingAction) pendingAction(); pendingAction=null; });
+$('#confirm-no').addEventListener('click', ()=>{ $('#confirm').close(); pendingAction=null; });
+$('#q').addEventListener('input', (e)=>{ state.query = e.target.value; state.open=null; render(); });
+
+// Deliberately async so the agent has to deal with a page that is not ready on load.
+setTimeout(render, 450);
+</script>
+</body></html>
