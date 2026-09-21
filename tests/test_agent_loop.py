@@ -197,3 +197,21 @@ def test_a_rate_limit_is_waited_out_not_fatal(mail, monkeypatch):
 
     assert result.status == "completed"
     assert waited, "the loop must back off rather than give up"
+
+
+def test_page_content_arrives_fenced_as_untrusted(mail):
+    """A page can contain text addressed at the agent. Everything the site wrote
+    is fenced, so the transcript never blurs 'the site said' into 'the user asked'."""
+    from browser_agent.agent.safety import SafetyPolicy
+    from browser_agent.agent.tools import UNTRUSTED_OPEN, Toolbox
+    from browser_agent.config import AgentConfig, SafetyConfig
+
+    box = Toolbox(mail, AgentConfig(), SafetyPolicy(cfg=SafetyConfig(use_llm_judge=False)))
+    for call, args in [
+        ("browser_snapshot", {}),
+        ("browser_find", {"query": "Входящие"}),
+        ("browser_read_text", {"max_chars": 200}),
+    ]:
+        outcome = box.dispatch(call, args)
+        assert not outcome.is_error, call
+        assert outcome.content.startswith(UNTRUSTED_OPEN), call
