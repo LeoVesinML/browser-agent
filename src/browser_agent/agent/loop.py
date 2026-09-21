@@ -9,9 +9,12 @@ detection, and the escalation path when an action keeps failing.
 from __future__ import annotations
 
 import json
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
+
+import anthropic
 
 from ..browser.session import BrowserSession
 from ..config import AgentConfig
@@ -147,12 +150,18 @@ class BrowserAgent:
                 self.convo.add_user_text(BUDGET_NUDGE.format(n=3))
 
             try:
-                response = self.llm.create(system=system, messages=self.convo.messages, tools=tools)
+                response = self._call_model(system, tools)
             except Exception as exc:  # noqa: BLE001
                 self.console.error(f"model call failed: {exc}")
                 if self.trace:
                     self.trace.write("model_error", error=str(exc))
-                raise
+                return RunResult(
+                    "failed",
+                    "The run stopped because the model was unreachable: "
+                    f"{type(exc).__name__}: {exc}\n\n"
+                    f"Progress so far: {json.dumps(self.convo.notes, ensure_ascii=False)}",
+                    step, self.usage, dict(self.convo.notes),
+                )
 
             if getattr(response, "stop_reason", None) == "refusal":
                 return RunResult("failed", "The model declined to continue with this task.",
@@ -188,6 +197,31 @@ class BrowserAgent:
         )
 
     # --------------------------------------------------------------- internals
+
+    def _call_model(self, system: Any, tools: list[dict[str, Any]]) -> Any:
+        """Model call with a rate-limit backoff of its own.
+
+        The SDK already retries, but on a provider that rate-limits by the minute
+        its short backoff runs out and the exception reaches the loop - throwing
+        away a run that was going fine. Waiting is almost always better than
+        losing the work, so we wait, visibly, a few times.
+        """
+        delay = 20.0
+        for attempt in range(4):
+            try:
+                return self.llm.create(system=system, messages=self.convo.messages, tools=tools)
+            except anthropic.RateLimitError as exc:
+                if attempt == 3:
+                    raise
+                wait = float(
+                    getattr(getattr(exc, "response", None), "headers", {}).get("retry-after", 0)
+                ) or delay
+                self.console.warn(f"rate limited by the provider — waiting {wait:.0f}s and retrying")
+                if self.trace:
+                    self.trace.write("rate_limited", attempt=attempt + 1, wait=wait)
+                time.sleep(wait)
+                delay *= 2
+        raise RuntimeError("unreachable")
 
     def _manage_context(self, task: str, tokens: int) -> None:
         pruned = self.convo.prune()

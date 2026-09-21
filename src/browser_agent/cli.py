@@ -155,10 +155,16 @@ def main(argv: list[str] | None = None) -> int:
                 result = agent.run(task)
             except KeyboardInterrupt:
                 console.warn("interrupted by the user")
+                if args.task:
+                    break
                 continue
             except Exception as exc:  # noqa: BLE001
                 console.error(f"run failed: {type(exc).__name__}: {exc}")
                 trace.write("run_error", error=str(exc))
+                # A one-shot invocation exits on failure. Falling through to the
+                # prompt would read whatever is left on stdin as the next task.
+                if args.task:
+                    return 1
                 continue
 
             console.report(result.report, result.status)

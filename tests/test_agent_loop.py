@@ -164,3 +164,36 @@ def test_a_reading_subagent_cannot_act(mail):
     outcome = box.dispatch("browser_click", {"ref": "e1"})
     assert outcome.is_error and "not available to you" in outcome.content
     assert box.dispatch("finish", {"report": "x", "status": "completed"}).is_error
+
+
+def test_a_rate_limit_is_waited_out_not_fatal(mail, monkeypatch):
+    """Losing a run that was going fine because the provider rate-limited one
+    call is the wrong trade: waiting is almost always cheaper than starting over."""
+    import anthropic
+    import browser_agent.agent.loop as loop_mod
+
+    calls = {"n": 0}
+
+    def flaky(_m):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise anthropic.RateLimitError(
+                "rate limited",
+                response=httpx_response(429),
+                body=None,
+            )
+        return [Block("tool_use", name="finish", input={"report": "ok", "status": "completed"})]
+
+    def httpx_response(status):
+        import httpx2 as httpx
+
+        return httpx.Response(status, request=httpx.Request("POST", "https://x.test"))
+
+    waited: list[float] = []
+    monkeypatch.setattr(loop_mod.time, "sleep", lambda s: waited.append(s))
+
+    agent = build_agent(mail, monkeypatch, [flaky, flaky])
+    result = agent.run("что-нибудь")
+
+    assert result.status == "completed"
+    assert waited, "the loop must back off rather than give up"
