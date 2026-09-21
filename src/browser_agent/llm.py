@@ -57,9 +57,10 @@ class Usage:
 
 
 class LLM:
-    def __init__(self, cfg: ModelConfig, usage: Usage | None = None) -> None:
+    def __init__(self, cfg: ModelConfig, usage: Usage | None = None, stream: bool = True) -> None:
         self.cfg = cfg
         self.usage = usage or Usage()
+        self.stream = stream
         kwargs: dict[str, Any] = {"max_retries": 3, "timeout": 180.0}
         if cfg.base_url:
             kwargs["base_url"] = cfg.base_url
@@ -102,7 +103,17 @@ class LLM:
             payload["tools"] = tools
         if tool_choice:
             payload["tool_choice"] = tool_choice
-        response = self.client.messages.create(**payload)
+
+        # Streaming, always. Not for the typing effect: a non-streaming request
+        # that the server is slow to start on looks identical to a dead
+        # connection, and on a loaded third-party endpoint that was reliably a
+        # multi-minute stall per turn. With a stream the connection produces
+        # events from the start and the SDK assembles the same Message.
+        if self.stream:
+            with self.client.messages.stream(**payload) as stream:
+                response = stream.get_final_message()
+        else:
+            response = self.client.messages.create(**payload)
         self.usage.add(model, response.usage)
         return response
 

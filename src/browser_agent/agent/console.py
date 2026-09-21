@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from rich.console import Console
+from rich.markup import escape
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -55,7 +56,8 @@ class AgentConsole:
 
     def tool_call(self, name: str, args: dict[str, Any], prefix: str = "") -> None:
         rendered = ", ".join(
-            f"[cyan]{k}[/cyan]=[white]{self._short(v)}[/white]" for k, v in args.items()
+            f"[cyan]{escape(k)}[/cyan]=[white]{escape(self._short(v))}[/white]"
+            for k, v in args.items()
         )
         self.console.print(f"{prefix}[bold yellow]▸ {name}[/]([dim]{rendered}[/dim])")
 
@@ -66,7 +68,9 @@ class AgentConsole:
         shown = body.strip().splitlines()[:lines]
         style = "red" if is_error else "grey58"
         for line in shown:
-            self.console.print(f"{prefix}  [{style}]{line[:180]}[/{style}]")
+            # Element handles look exactly like rich markup ("[e17]"), so escape
+            # everything that came from the page before printing it.
+            self.console.print(f"{prefix}  [{style}]{escape(line[:180])}[/{style}]")
         total = len(body.strip().splitlines())
         if total > lines:
             self.console.print(f"{prefix}  [dim]… +{total - lines} more lines[/dim]")

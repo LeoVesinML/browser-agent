@@ -23,7 +23,7 @@ class ModelConfig:
     # A cheaper model for bounded, mechanical sub-calls (risk judging, compaction).
     small: str = os.getenv("AGENT_SMALL_MODEL", "claude-haiku-4-5")
     effort: str = os.getenv("AGENT_EFFORT", "high")  # low | medium | high | xhigh | max
-    max_tokens: int = 8_000
+    max_tokens: int = 4_000
     # "anthropic" uses the full Messages API surface (adaptive thinking, effort).
     # "compatible" targets an Anthropic-compatible third-party endpoint such as
     # z.ai's GLM, which accepts the message/tool shape but not the newer fields.
