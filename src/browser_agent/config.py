@@ -8,7 +8,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# override=True on purpose: a project-local .env is an explicit choice, and the
+# most common failure otherwise is a stale ANTHROPIC_BASE_URL exported in the
+# user's shell silently winning over the endpoint they just configured here.
+load_dotenv(override=True)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
