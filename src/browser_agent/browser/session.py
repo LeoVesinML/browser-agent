@@ -30,6 +30,15 @@ log = logging.getLogger(__name__)
 _INIT_SCRIPT = Path(__file__).parent / "js" / "extract.js"
 
 
+def _is_redirect_interruption(exc: Exception) -> bool:
+    text = str(exc)
+    return (
+        "interrupted by another navigation" in text
+        or "net::ERR_ABORTED" in text
+        or "Navigation to" in text and "was interrupted" in text
+    )
+
+
 @dataclass
 class DialogEvent:
     kind: str
@@ -226,7 +235,16 @@ class BrowserSession:
         page = self.active_page()
         if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", url):
             url = "https://" + url
-        page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms or self.default_timeout_ms)
+        try:
+            page.goto(url, wait_until="domcontentloaded",
+                      timeout=timeout_ms or self.default_timeout_ms)
+        except PlaywrightError as exc:
+            # Plenty of sites bounce you somewhere else the moment you arrive - to a
+            # city subdomain, a locale, a consent page. Playwright reports that as the
+            # navigation being interrupted, but it is the site working as intended, so
+            # let it land and carry on.
+            if not _is_redirect_interruption(exc):
+                raise
         self.settle()
 
     def settle(self, quiet_ms: int = 350, timeout_ms: int = 4_000) -> None:

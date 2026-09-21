@@ -75,3 +75,13 @@ def test_a_tab_the_site_opens_becomes_the_active_one(session, demo_url):
 
     tabs = session.tab_list()
     assert sum(1 for t in tabs if t["active"]) == 1
+
+
+def test_a_site_that_redirects_on_arrival_is_not_a_failure(session, demo_url):
+    """Real sites bounce you to a city subdomain or a locale the moment you land.
+    Playwright calls that an interrupted navigation; treating it as an error made
+    every such site unreachable."""
+    session.goto(f"{demo_url}/redirect.html")
+    session.settle(quiet_ms=400)
+    assert session.active_page().url.endswith("/index.html")
+    assert "Демо-стенд" in session.active_page().title()
