@@ -147,3 +147,20 @@ def test_context_stays_flat_over_a_long_run(mail, monkeypatch):
     growth = sizes[-1] - sizes[3]
     assert agent.convo.pruned_count >= 5
     assert growth < sizes[3], f"transcript grew by {growth} chars over 7 extra observations"
+
+
+def test_a_reading_subagent_cannot_act(mail):
+    """The sub-agent is only offered read-only schemas; this checks it is also
+    physically unable to act if it asks for something else anyway."""
+    from browser_agent.agent.safety import SafetyPolicy
+    from browser_agent.agent.tools import Toolbox
+    from browser_agent.config import AgentConfig, SafetyConfig
+
+    cfg = AgentConfig()
+    box = Toolbox(mail, cfg, SafetyPolicy(cfg=SafetyConfig(use_llm_judge=False)), readonly=True)
+    names = {t["name"] for t in box.schemas(readonly=True)}
+    assert "browser_click" not in names and "finish" not in names
+
+    outcome = box.dispatch("browser_click", {"ref": "e1"})
+    assert outcome.is_error and "not available to you" in outcome.content
+    assert box.dispatch("finish", {"report": "x", "status": "completed"}).is_error

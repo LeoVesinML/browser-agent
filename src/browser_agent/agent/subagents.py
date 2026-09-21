@@ -36,7 +36,7 @@ def run_reading_subagent(
 ) -> str:
     """Run a read-only sub-agent and return its answer as plain text."""
     safety = SafetyPolicy(cfg=cfg.safety, llm=None, confirm=None)
-    box = Toolbox(session, cfg, safety)
+    box = Toolbox(session, cfg, safety, readonly=True)
     tools = box.schemas(readonly=True)
 
     page = session.active_page()

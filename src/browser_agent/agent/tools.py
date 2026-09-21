@@ -257,6 +257,7 @@ class Toolbox:
         ask_user: Callable[[str], str] | None = None,
         delegate: Callable[[str, int], str] | None = None,
         notes: dict[str, str] | None = None,
+        readonly: bool = False,
     ) -> None:
         self.session = session
         self.cfg = cfg
@@ -266,6 +267,9 @@ class Toolbox:
         self.notes = notes if notes is not None else {}
         self.snapshot: S.Snapshot | None = None
         self.last_verdict = None
+        # A read-only box physically cannot act, whatever the model asks for.
+        # Belt and braces on top of only advertising the read-only schemas.
+        self.allowed = {t["name"] for t in self.schemas(readonly=readonly)}
 
     # ------------------------------------------------------------------ helpers
 
@@ -310,6 +314,12 @@ class Toolbox:
     # ----------------------------------------------------------------- dispatch
 
     def dispatch(self, name: str, args: dict[str, Any]) -> ToolOutcome:
+        if name not in self.allowed:
+            return ToolOutcome(
+                f"{name!r} is not available to you. Available tools: "
+                f"{', '.join(sorted(self.allowed))}.",
+                is_error=True,
+            )
         handler = getattr(self, f"_t_{name}", None)
         if handler is None:
             return ToolOutcome(f"unknown tool {name!r}", is_error=True)
