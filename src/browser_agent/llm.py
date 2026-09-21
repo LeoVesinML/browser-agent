@@ -48,6 +48,11 @@ class Usage:
         self.by_model[model] = (prev[0] + inp, prev[1] + out)
 
     @property
+    def priced(self) -> bool:
+        """False when we have no rate card for the model actually used."""
+        return any(m in PRICES for m in self.by_model)
+
+    @property
     def cost_usd(self) -> float:
         total = 0.0
         for model, (inp, out) in self.by_model.items():

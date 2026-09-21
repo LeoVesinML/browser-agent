@@ -98,28 +98,50 @@ class SafetyPolicy:
 
     # ------------------------------------------------------------- classifying
 
+    # A control's own name is short and imperative ("Удалить", "Оплатить заказ").
+    # Anything longer is descriptive prose - a card, a row, a link that explains a
+    # section - and matching command words inside it produces false alarms, e.g.
+    # a link reading "Входящие, поиск, чтение, удаление с подтверждением".
+    ACTION_LABEL_CHARS = 48
+
+    @staticmethod
+    def _split(label: str) -> tuple[str, str]:
+        """`role "name"` -> (role, name). Falls back to ('', label)."""
+        match = re.match(r'^(\w+)\s+"(.*)"$', label.strip(), re.S)
+        return (match.group(1), match.group(2)) if match else ("", label)
+
     def assess(self, tool: str, args: dict[str, Any], label: str, url: str) -> Verdict:
         if tool not in MUTATING_TOOLS:
             return Verdict("none", "read-only action", "rules")
 
-        haystack = f"{label} {json.dumps(args, ensure_ascii=False)}".lower()
+        role, name = self._split(label)
         page = url.lower()
+        typed = json.dumps(args.get("text", ""), ensure_ascii=False).lower()
+        # Lexical rules only look at what the control calls itself, plus text the
+        # agent is about to type. Never at the arguments' bookkeeping fields.
+        haystack = f"{name} {typed}".lower()
+        command_like = len(name) <= self.ACTION_LABEL_CHARS
 
         for pattern in HIGH_RISK:
             if re.search(pattern, haystack):
                 return Verdict("high", f"matches irreversible action pattern {pattern!r}", "rules")
 
-        for pattern in MEDIUM_RISK:
-            if re.search(pattern, haystack):
-                risk = "high" if any(re.search(p, page) for p in PAYMENT_CONTEXT) and (
-                    "подтверд" in haystack or "confirm" in haystack or "оформ" in haystack
-                ) else "medium"
-                return Verdict(risk, f"matches state-changing pattern {pattern!r}", "rules")
+        if command_like:
+            for pattern in MEDIUM_RISK:
+                if re.search(pattern, haystack):
+                    risk = "high" if any(re.search(p, page) for p in PAYMENT_CONTEXT) and (
+                        "подтверд" in haystack or "confirm" in haystack or "оформ" in haystack
+                    ) else "medium"
+                    return Verdict(risk, f"matches state-changing pattern {pattern!r}", "rules")
 
         if tool == "browser_navigate":
             return Verdict("low", "navigation", "rules")
         if tool == "browser_type" and not args.get("submit"):
             return Verdict("low", "typing into a field", "rules")
+        if tool == "browser_click" and role == "link" and not args.get("modifiers"):
+            # Following a link is navigation. Sites that destroy data behind a
+            # bare <a> exist, which is what the judge below is for.
+            return Verdict("low", "following a link", "rules")
 
         if self.cfg.use_llm_judge and self.llm is not None:
             return self._judge(tool, args, label, url)

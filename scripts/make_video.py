@@ -137,6 +137,10 @@ def main() -> int:
     ap.add_argument("--fps", type=int, default=10)
     ap.add_argument("--panel-width", type=int, default=760)
     ap.add_argument("--font-size", type=int, default=13)
+    ap.add_argument(
+        "--speed", type=float, default=1.0,
+        help="Speed both streams up by this factor (4 turns a 12-minute run into 3 minutes).",
+    )
     args = ap.parse_args()
 
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
@@ -163,19 +167,23 @@ def main() -> int:
     lines = trace_to_lines(trace_path, cols)
 
     tmp = Path(tempfile.mkdtemp(prefix="agentvid-"))
-    frames = int(duration * args.fps)
+    # The terminal panel is rendered at the *output* rate, so speeding the video
+    # up keeps the log in step with the browser instead of drifting away from it.
+    frames = int(duration / args.speed * args.fps)
     for i in range(frames):
-        now = i / args.fps + offset
+        now = i / args.fps * args.speed + offset
         panel = render_panel(lines, now, (args.panel_width, vh), font, line_h, rows)
         panel.save(tmp / f"f{i:05d}.png")
     print(f"rendered {frames} terminal frames at {args.panel_width}x{vh}")
 
     out = args.output or (args.run_dir / "demo.mp4")
+    speed_filter = "" if args.speed == 1.0 else f",setpts=PTS/{args.speed}"
     cmd = [
         "ffmpeg", "-y",
         "-framerate", str(args.fps), "-i", str(tmp / "f%05d.png"),
         "-i", str(video),
-        "-filter_complex", "[0:v][1:v]hstack=inputs=2[v]",
+        "-filter_complex",
+        f"[1:v]fps={args.fps}{speed_filter}[b];[0:v][b]hstack=inputs=2[v]",
         "-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
         str(out),
     ]

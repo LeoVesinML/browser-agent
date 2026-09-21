@@ -96,7 +96,7 @@ class AgentConsole:
             f"{usage.input_tokens:,} in / {usage.output_tokens:,} out · "
             f"cache read {usage.cache_read:,} · "
             f"compactions {compactions} · pruned observations {pruned} · "
-            f"~${usage.cost_usd:.3f}[/dim]"
+            f"{'~$%.3f' % usage.cost_usd if usage.priced else 'cost n/a for this model'}[/dim]"
         )
 
     # ------------------------------------------------------------------- input
@@ -118,11 +118,23 @@ class AgentConsole:
         self.console.print(
             "  [dim]y = allow once · n = refuse · a = allow this kind for the rest of the run[/dim]"
         )
-        return Prompt.ask("  [bold]allow?[/bold]", choices=["y", "n", "a"], default="y")
+        try:
+            return Prompt.ask("  [bold]allow?[/bold]", choices=["y", "n", "a"], default="y")
+        except (EOFError, KeyboardInterrupt):
+            # Nobody is there to answer. Refusing is the only safe default for an
+            # action we already decided is hard to undo.
+            self.console.print("  [red]no answer available — refusing[/red]")
+            return "n"
 
     def ask_user(self, question: str) -> str:
         self.console.print(Panel(Text(question, style="bold"), title="the agent needs you", border_style="magenta"))
-        return Prompt.ask("  [bold magenta]you[/bold magenta]")
+        try:
+            return Prompt.ask("  [bold magenta]you[/bold magenta]")
+        except (EOFError, KeyboardInterrupt):
+            return (
+                "no user is available right now - continue with what you can do "
+                "without this, and say in your report what you could not do."
+            )
 
     # ------------------------------------------------------------------ helper
 

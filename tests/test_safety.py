@@ -64,3 +64,28 @@ def test_always_allow_short_circuits_repeat_questions():
     p.always_allow.add(f"browser_click|{label}")
     p.confirm = None
     assert p.gate("browser_click", {"ref": "e2"}, label, "u")[0] is True
+
+
+def test_descriptive_text_does_not_trip_the_action_rules():
+    """A link that *describes* a section is not an action. Matching command
+    words inside long prose was a real false positive on the first live run:
+    'Почта · Входящие, поиск, чтение, удаление с подтверждением'."""
+    p = policy()
+    long_link = 'link "Почта · Входящие, поиск, чтение, удаление с подтверждением"'
+    assert p.assess("browser_click", {"ref": "e1"}, long_link, "https://x.test/").risk == "low"
+    # the same word as an actual control name still stops the agent
+    assert p.assess("browser_click", {"ref": "e1"}, 'button "Удаление"', "https://x.test/").risk == "medium"
+
+
+def test_high_risk_words_are_caught_even_in_long_labels():
+    p = policy()
+    label = 'button "Оформить заказ и оплатить картой ···· 4417 прямо сейчас, доставка 30 минут"'
+    assert p.assess("browser_click", {"ref": "e1"}, label, "https://shop.test/cart").risk == "high"
+
+
+def test_text_the_agent_is_about_to_type_is_classified_too():
+    p = policy()
+    verdict = p.assess(
+        "browser_type", {"ref": "e1", "text": "удалить аккаунт", "submit": True}, 'textbox "Команда"', "u"
+    )
+    assert verdict.risk == "high"
