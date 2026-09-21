@@ -1,0 +1,17 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python 3.13
+      - run: uv pip install -e ".[dev,mcp]"
+      - run: .venv/bin/playwright install --with-deps chromium
+      - name: no site knowledge is baked in
+        run: ./scripts/check_no_hardcoding.sh
+      - name: tests (real browser, scripted model, no API calls)
+        run: xvfb-run -a .venv/bin/python -m pytest -q
