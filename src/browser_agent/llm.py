@@ -66,7 +66,14 @@ class LLM:
         self.cfg = cfg
         self.usage = usage or Usage()
         self.stream = stream
-        kwargs: dict[str, Any] = {"max_retries": 3, "timeout": 180.0}
+        # A *read* timeout, not a total one. While streaming, tokens arrive
+        # continuously, so a long silence on the socket means the request is dead
+        # rather than slow - fail it after a minute and let the SDK retry, instead
+        # of holding the loop for the full request timeout.
+        kwargs: dict[str, Any] = {
+            "max_retries": 3,
+            "timeout": anthropic.Timeout(600.0, connect=15.0, read=60.0, write=30.0),
+        }
         if cfg.base_url:
             kwargs["base_url"] = cfg.base_url
         self.client = anthropic.Anthropic(**kwargs)

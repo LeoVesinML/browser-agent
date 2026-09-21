@@ -227,7 +227,8 @@ class BrowserAgent:
             self.console.tool_result(preview, outcome.is_error)
             if self.trace:
                 self.trace.write("tool_result", step=step, tool=call.name,
-                                 error=outcome.is_error, content=preview[:4000])
+                                 error=outcome.is_error, content=preview[:4000],
+                                 video=self.session.video_path())
 
             self._consecutive_failures = self._consecutive_failures + 1 if outcome.is_error else 0
             self._recent_calls.append(f"{call.name}:{json.dumps(args, ensure_ascii=False, sort_keys=True)}")

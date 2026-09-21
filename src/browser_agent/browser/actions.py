@@ -190,9 +190,18 @@ def navigate(session: BrowserSession, action: str, url: str | None = None) -> st
             session.goto(url)
             return f"navigated to {page.url}"
         if action == "back":
-            page.go_back(wait_until="domcontentloaded")
+            # A tab opened by a target=_blank link has no history: go_back()
+            # returns None and nothing happens. Saying so is what stops an agent
+            # from trying it three times in a row.
+            if page.go_back(wait_until="domcontentloaded") is None:
+                raise ActionError(
+                    "there is nothing to go back to in this tab - it was opened fresh "
+                    "by a link. Use browser_tabs to list the tabs and switch back to "
+                    "the one you came from, or close this one."
+                )
         elif action == "forward":
-            page.go_forward(wait_until="domcontentloaded")
+            if page.go_forward(wait_until="domcontentloaded") is None:
+                raise ActionError("there is nothing to go forward to in this tab")
         elif action == "reload":
             page.reload(wait_until="domcontentloaded")
         else:

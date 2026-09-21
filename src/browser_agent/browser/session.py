@@ -52,6 +52,7 @@ class BrowserSession:
     _context: BrowserContext | None = field(default=None, init=False, repr=False)
     _browser: Browser | None = field(default=None, init=False, repr=False)
     page: Page | None = field(default=None, init=False, repr=False)
+    on_page_event: Any = None  # (kind, video_path) -> None, for the trace
     pending_dialogs: list[DialogEvent] = field(default_factory=list, init=False)
     last_console_errors: list[str] = field(default_factory=list, init=False)
 
@@ -88,6 +89,7 @@ class BrowserSession:
         pages = self._context.pages
         self.page = pages[0] if pages else self._context.new_page()
         self._wire_page(self.page)
+        self._emit_page("opened")
         if start_url:
             self.goto(start_url)
 
@@ -106,10 +108,18 @@ class BrowserSession:
 
     # ------------------------------------------------------------------- events
 
+    def _emit_page(self, kind: str) -> None:
+        if self.on_page_event:
+            try:
+                self.on_page_event(kind, self.video_path())
+            except Exception:  # noqa: BLE001 - telemetry must never break a run
+                pass
+
     def _on_new_page(self, page: Page) -> None:
         self._wire_page(page)
         # Popups and target=_blank links become the active tab, like for a human.
         self.page = page
+        self._emit_page("opened")
         try:
             page.wait_for_load_state("domcontentloaded", timeout=5_000)
         except PlaywrightError:
@@ -154,6 +164,22 @@ class BrowserSession:
     @property
     def pages(self) -> list[Page]:
         return [p for p in self.context.pages if not p.is_closed()]
+
+    def video_path(self) -> str | None:
+        """Path of the recording for the *active* tab, if recording is on.
+
+        Playwright writes one video track per page, so a run that opens tabs
+        produces several files. Knowing which one was on screen when is what
+        lets a composed demo video cut between them instead of showing a tab
+        nothing was happening in.
+        """
+        page = self.page
+        if page is None or page.is_closed() or page.video is None:
+            return None
+        try:
+            return page.video.path()
+        except Exception:  # noqa: BLE001 - recording disabled
+            return None
 
     def active_page(self) -> Page:
         if self.page is None or self.page.is_closed():

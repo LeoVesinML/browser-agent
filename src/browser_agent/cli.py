@@ -116,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         video_dir=(trace.dir / "video") if cfg.browser.record_video else None,
     )
 
+    session.on_page_event = lambda kind, path: trace.write(f"page_{kind}", video=path)
+
     console.rule("browser agent")
     try:
         session.start(cfg.browser.start_url)

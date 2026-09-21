@@ -99,3 +99,17 @@ def test_typing_into_a_password_field_is_refused(session, demo_url):
         assert "password" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("passwords must never be typed by the agent")
+
+
+def test_back_in_a_fresh_tab_says_so_instead_of_doing_nothing(session, demo_url):
+    """A tab opened by a link has no history. Silently doing nothing is what
+    makes an agent retry the same dead action; an explicit error is what makes
+    it try the tabs tool instead."""
+    session.goto(f"{demo_url}/mail.html")
+    session.new_tab(f"{demo_url}/shop.html")
+    try:
+        A.navigate(session, "back")
+    except A.ActionError as exc:
+        assert "browser_tabs" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("a no-op back must be reported")
