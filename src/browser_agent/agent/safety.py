@@ -44,7 +44,11 @@ HIGH_RISK = [
 ]
 
 MEDIUM_RISK = [
-    r"удалить", r"удаление", r"в корзину(?!\s*·)", r"переместить в корзину", r"это спам",
+    # Note what is deliberately absent: a bare "в корзину". In a mail client it
+    # means "move to trash", in a shop it means "add to cart" - the same words,
+    # opposite risk. Ambiguity across domains is exactly what the judge is for;
+    # lexical rules only claim the cases that are unambiguous.
+    r"удалить", r"удаление", r"переместить в корзину", r"это спам",
     r"пометить как спам", r"\bdelete\b", r"\bremove\b", r"move to trash", r"\bspam\b",
     r"отправить", r"\bsend\b", r"\bsubmit\b", r"откликнуться", r"\bapply\b",
     r"опубликовать", r"\bpublish\b", r"\bpost\b", r"отписаться", r"unsubscribe",
@@ -52,6 +56,13 @@ MEDIUM_RISK = [
     r"сохранить изменения", r"save changes", r"подтвердить", r"\bconfirm\b",
     r"согласен", r"\baccept\b", r"принять",
 ]
+
+# Phrases whose risk depends entirely on the site. "В корзину" is "move to trash"
+# in a mail client and "add to cart" in a shop - the same words, opposite risk.
+# The judge can tell them apart because it sees the page; a regex cannot. With no
+# judge available we fall back to asking, because a needless question is cheaper
+# than a silent deletion.
+AMBIGUOUS = [r"\bв корзину\b", r"\barchive\b", r"\bв архив\b"]
 
 PAYMENT_CONTEXT = [r"checkout", r"payment", r"оплат", r"cart", r"корзин", r"заказ", r"order"]
 
@@ -133,6 +144,13 @@ class SafetyPolicy:
                         "подтверд" in haystack or "confirm" in haystack or "оформ" in haystack
                     ) else "medium"
                     return Verdict(risk, f"matches state-changing pattern {pattern!r}", "rules")
+
+        if command_like and any(re.search(p, haystack) for p in AMBIGUOUS):
+            if self.cfg.use_llm_judge and self.llm is not None:
+                return self._judge(tool, args, label, url)
+            return Verdict(
+                "medium", "wording is ambiguous across sites and no judge is available", "rules"
+            )
 
         if tool == "browser_navigate":
             return Verdict("low", "navigation", "rules")

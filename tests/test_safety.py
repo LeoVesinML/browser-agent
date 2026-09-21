@@ -89,3 +89,31 @@ def test_text_the_agent_is_about_to_type_is_classified_too():
         "browser_type", {"ref": "e1", "text": "удалить аккаунт", "submit": True}, 'textbox "Команда"', "u"
     )
     assert verdict.risk == "high"
+
+
+def test_wording_that_means_different_things_on_different_sites_is_escalated():
+    """"В корзину" is "move to trash" in a mail client and "add to cart" in a
+    shop. A regex cannot tell those apart, so with no judge to ask, the agent
+    asks the user rather than guessing."""
+    p = policy()  # judge disabled
+    assert p.assess(
+        "browser_click", {"ref": "e1"}, 'button "В корзину"', "https://shop.test/menu"
+    ).risk == "medium"
+    # the unambiguous phrasing never needed a judge
+    assert p.assess(
+        "browser_click", {"ref": "e1"}, 'button "Переместить в корзину"', "https://mail.test/"
+    ).risk == "medium"
+
+
+def test_the_judge_is_what_disambiguates_when_it_is_available():
+    seen = {}
+
+    class Judge:
+        def text(self, *, system, prompt, model=None, max_tokens=1500, effort=None):
+            seen["prompt"] = prompt
+            return '{"risk": "low", "reason": "adding an item to a cart"}'
+
+    p = SafetyPolicy(cfg=SafetyConfig(mode="ask", use_llm_judge=True), llm=Judge())
+    verdict = p.assess("browser_click", {"ref": "e1"}, 'button "В корзину"', "https://shop.test/menu")
+    assert verdict.risk == "low" and verdict.source == "judge"
+    assert "shop.test" in seen["prompt"], "the judge must see the page to disambiguate"
