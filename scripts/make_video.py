@@ -98,7 +98,16 @@ def trace_to_lines(path: Path, cols: int) -> list[tuple[float, str, str]]:
     return lines
 
 
+_REMUXED: dict[str, Path] = {}
+
+
 def probe(path: Path) -> tuple[float, int, int]:
+    """Duration and size of a recording.
+
+    A webm whose writer was interrupted carries no duration in its header, and
+    Playwright leaves one behind whenever the browser goes away abruptly. Remuxing
+    rebuilds the header without re-encoding, which is fast and lossless.
+    """
     out = subprocess.check_output(
         ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
          "stream=width,height:format=duration", "-of", "json", str(path)],
@@ -106,7 +115,17 @@ def probe(path: Path) -> tuple[float, int, int]:
     )
     data = json.loads(out)
     stream = data["streams"][0]
-    return float(data["format"]["duration"]), int(stream["width"]), int(stream["height"])
+    duration = data.get("format", {}).get("duration")
+    if duration in (None, "N/A"):
+        fixed = _REMUXED.get(str(path))
+        if fixed is None:
+            fixed = Path(tempfile.mkdtemp(prefix="agentvid-fix-")) / (path.stem + ".webm")
+            print(f"  {path.name}: header has no duration, remuxing")
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-c", "copy", str(fixed)],
+                           check=True)
+            _REMUXED[str(path)] = fixed
+        return probe(fixed)
+    return float(duration), int(stream["width"]), int(stream["height"])
 
 
 def build_timeline(records: list[dict], run_dir: Path) -> list[tuple[float, float, Path]]:
@@ -149,16 +168,25 @@ def build_timeline(records: list[dict], run_dir: Path) -> list[tuple[float, floa
 
 def browser_stream(
     spans: list[tuple[float, float, Path]], fps: int, speed: float, hold: float
-) -> tuple[list[str], str, float]:
+) -> tuple[list[str], str, float, str]:
     """ffmpeg inputs and a filter that stitches the visible tabs into one track."""
+    # Probe every track first: that is what repairs a header-less recording, and
+    # the repaired path is the one ffmpeg must be given as an input.
+    durations: dict[Path, float] = {}
+    for _s, _e, path in spans:
+        if path not in durations:
+            durations[path] = probe(path)[0]
+
     files: list[Path] = []
     for _s, _e, path in spans:
-        if path not in files:
-            files.append(path)
+        actual = _REMUXED.get(str(path), path)
+        if actual not in files:
+            files.append(actual)
 
     parts, labels, total = [], [], 0.0
     for idx, (start, stop, path) in enumerate(spans):
-        duration = probe(path)[0]
+        duration = durations[path]
+        path = _REMUXED.get(str(path), path)
         start, stop = max(0.0, start), min(stop, duration)
         if stop - start < 0.4:
             continue
@@ -176,7 +204,7 @@ def browser_stream(
     hold_filter = "" if hold <= 0 else f",tpad=stop_mode=clone:stop_duration={hold}"
     filt = ";".join(parts) + f";{joined}concat=n={len(labels)}:v=1[cat]"
     filt += f";[cat]fps={fps}{speed_filter}{hold_filter}[b]"
-    return [str(f) for f in files], filt, total
+    return [str(f) for f in files], filt, total, speed_filter
 
 
 def render_panel(
@@ -243,8 +271,20 @@ def main() -> int:
     rows = max(10, (vh - 44) // line_h)
     lines = trace_to_lines(trace_path, cols)
 
-    inputs, browser_filter, browser_seconds = browser_stream(
-        spans, args.fps, args.speed, args.hold
+    # The recording can end before the run does - a browser that goes away while
+    # the agent is still finishing leaves a shorter track than the trace. Freeze
+    # on the last frame long enough for the log to reach its own end, or the
+    # video would cut away before the result the whole run was for.
+    trace_end = max(r["t"] for r in records) - offset
+    hold = args.hold
+    spans_seconds = sum(min(stop, probe(path)[0]) - max(0.0, start) for start, stop, path in spans)
+    missing = trace_end - spans_seconds
+    if missing > 1:
+        hold += missing / args.speed
+        print(f"recording is {missing:.0f}s shorter than the run; holding {hold:.0f}s at the end")
+
+    inputs, browser_filter, browser_seconds, _ = browser_stream(
+        spans, args.fps, args.speed, hold
     )
     print(f"{len(inputs)} tab recording(s), {len(spans)} visible segment(s), "
           f"{browser_seconds:.0f}s of footage")
@@ -252,7 +292,7 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="agentvid-"))
     # The terminal panel is rendered at the *output* rate, so speeding the video
     # up keeps the log in step with the browser instead of drifting away from it.
-    frames = int((browser_seconds / args.speed + args.hold) * args.fps)
+    frames = int((browser_seconds / args.speed + hold) * args.fps)
     for i in range(frames):
         now = i / args.fps * args.speed + offset
         panel = render_panel(lines, now, (args.panel_width, vh), font, line_h, rows)
